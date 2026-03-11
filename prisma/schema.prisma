@@ -1,0 +1,107 @@
+// Prisma schema — Nicktio (SQLite)
+// Switch provider to "postgresql" or "mysql" and update DATABASE_URL when going to production.
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+model User {
+  id               Int      @id @default(autoincrement())
+  name             String
+  email            String   @unique
+  username         String?  @unique
+  password         String?  // null for OAuth-only users
+  role             String   @default("user")  // "user" | "admin"
+  emailVerified    Boolean  @default(false)
+  image            String?
+  stripeCustomerId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subscriptions    Subscription[]
+  payments         Payment[]
+  accounts         Account[]
+
+  @@map("users")
+}
+
+// ─── Plans (hosting plans) ───────────────────────────────────────────────────
+model Plan {
+  id                   Int      @id @default(autoincrement())
+  name                 String   // "Starter" | "Pro" | "Business"
+  slug                 String   @unique  // "starter" | "pro" | "business"
+  description          String?
+  monthlyPrice         Float
+  annualPrice          Float
+  stripePriceIdMonthly String?
+  stripePriceIdAnnual  String?
+  features             String?  // JSON array stored as text
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+
+  subscriptions        Subscription[]
+
+  @@map("plans")
+}
+
+// ─── Subscriptions ───────────────────────────────────────────────────────────
+model Subscription {
+  id                     Int      @id @default(autoincrement())
+  userId                 Int
+  planId                 Int
+  stripeSubscriptionId   String?  @unique
+  stripeCurrentPeriodEnd String?
+  status                 String   @default("active")  // "active" | "canceled" | "past_due" | "trialing"
+  billingInterval        String   @default("monthly")  // "monthly" | "annual"
+  cancelAtPeriodEnd      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                   Plan     @relation(fields: [planId], references: [id])
+  payments               Payment[]
+
+  @@map("subscriptions")
+}
+
+// ─── Payments ────────────────────────────────────────────────────────────────
+model Payment {
+  id                    Int          @id @default(autoincrement())
+  userId                Int
+  subscriptionId        Int?
+  stripePaymentIntentId String?      @unique
+  stripeInvoiceId       String?
+  amount                Float
+  currency              String       @default("usd")
+  status                String       @default("pending")  // "pending" | "succeeded" | "failed"
+  paymentMethod         String?      @default("stripe")
+  receiptUrl            String?
+  createdAt             DateTime     @default(now())
+
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@map("payments")
+}
+
+// ─── OAuth Accounts (for social login) ───────────────────────────────────────
+model Account {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  provider          String   // "google" | "github"
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("accounts")
+}
